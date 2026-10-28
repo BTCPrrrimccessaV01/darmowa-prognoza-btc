@@ -1,4 +1,4 @@
-const CACHE = 'prognoza-btc-v2';
+const CACHE = 'prognoza-btc-v3';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -11,6 +11,12 @@ self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.origin !== self.location.origin) return;
   const key = u.origin + u.pathname;
+  if (e.request.mode === 'navigate' || u.pathname.endsWith('/') || u.pathname.endsWith('.html')) {
+    // strona: najpierw świeża z sieci, offline ostatnia kopia
+    e.respondWith(fetch(e.request).then(r => { caches.open(CACHE).then(c => c.put(key, r.clone())); return r; })
+      .catch(() => caches.match(key)));
+    return;
+  }
   if (u.pathname.endsWith('.json')) {
     // dane: zawsze najpierw świeże z sieci, offline ostatnia zapisana kopia
     e.respondWith(fetch(e.request).then(r => { caches.open(CACHE).then(c => c.put(key, r.clone())); return r; })
