@@ -29,12 +29,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 4px;b
  <div class="card"><div class="muted">Strefy cenowe (90%)</div><table id="bands"></table></div>
  <div class="card"><div class="muted">Alerty</div><div id="al" class="muted"></div></div>
  <div class="card"><div class="muted">Onchain (mempool.space)</div><table id="on"></table></div>
- <div class="muted" id="cy"></div>
+ <div id="tfm"></div><div class="muted" id="cy"></div>
  <div class="muted">To statystyka, nie gwarancja ruchu. Nie jest to porada inwestycyjna.</div>
 </section>
 
 <section id="w" class="hide">
- <div class="card"><div class="muted">Analiza osobna: te dane nie wpływają na prognozę główną. Źródło: mempool.space.</div><table id="wt"></table></div>
+ <div class="card"><div class="muted">Analiza osobna: te dane nie wpływają na prognozę główną. Źródło: mempool.space.</div><table id="wt"></table></div><div id="tfw"></div>
 </section>
 
 <section id="s" class="hide">
@@ -98,7 +98,7 @@ function draw(){
 }
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
  document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));
- ['m','w','s','l'].forEach(id=>$(id).classList.toggle('hide',id!==b.dataset.t));if(SP&&b.dataset.t==='s')drawSpec();
+ ['m','w','s','l'].forEach(id=>$(id).classList.toggle('hide',id!==b.dataset.t));if(SP&&b.dataset.t==='s')drawSpec();if(TF)renderTF();
 });
 window.onresize=()=>{if(S)draw();};
 let SP=null;
@@ -131,7 +131,43 @@ function drawSpec(){
  [[SP.levels.up,'#22c55e'],[SP.levels.dn,'#ef4444'],[SP.ref,'#9ca3af']].forEach(([v,col])=>{x.strokeStyle=col;x.beginPath();x.moveTo(P,Y(v));x.lineTo(W-P,Y(v));x.stroke();});
  x.setLineDash([]);x.lineWidth=1;
 }
+let TF=null;
+const TFN={'5m':'5 minut','15m':'15 minut','1h':'1 godzina','4h':'4 godziny'};
+async function loadTF(){
+ try{const r=await fetch('data/tf_state.json?v='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);TF=await r.json();renderTF();}
+ catch(e){$('tfm').innerHTML='<div class="card muted">Wykresy interwałów: brak danych ('+e.message+')</div>';}
+}
+function tfCard(id,tf,d){
+ const ci=d.ci;
+ return '<div class="card"><div class="muted">'+TFN[tf]+' · model: '+d.model+'</div>'+
+  '<div class="big">'+(d.p_up*100).toFixed(1)+'% wzrost · '+((1-d.p_up)*100).toFixed(1)+'% spadek</div>'+
+  '<div class="muted">'+d.verdict+'. Trafność w historii '+(d.walk_acc*100).toFixed(2)+'% (95% przedział '+(ci[0]*100).toFixed(2)+'–'+(ci[1]*100).toFixed(2)+'%, '+d.n+' świec)</div>'+
+  '<canvas id="'+id+'-'+tf+'" style="height:220px"></canvas>'+
+  '<div class="muted">Scenariusz wzrostu do '+usd(d.up_end)+', spadku do '+usd(d.dn_end)+' (granice 90% po '+d.h+' świecach)</div></div>';
+}
+function drawTF(cid,d){
+ const c=$(cid);if(!c||!d||!d.candles.length)return;
+ c.width=c.clientWidth*2;c.height=c.clientHeight*2;
+ const x=c.getContext('2d'),W=c.width,H=c.height,P=16,cs=d.candles,n=cs.length;
+ const hi=Math.max(...cs.map(k=>k.h),d.up_end),lo=Math.min(...cs.map(k=>k.l),d.dn_end);
+ const Y=v=>H-P-(v-lo)/(hi-lo)*(H-2*P),sx=(W-2*P)/(n+d.h+1),X=i=>P+i*sx+sx/2;
+ cs.forEach((k,i)=>{x.strokeStyle=x.fillStyle=k.c>=k.o?'#22c55e':'#ef4444';x.beginPath();x.moveTo(X(i),Y(k.h));x.lineTo(X(i),Y(k.l));x.stroke();const a1=Y(k.o),a2=Y(k.c);x.fillRect(X(i)-sx*.35,Math.min(a1,a2),sx*.7,Math.max(2,Math.abs(a2-a1)));});
+ x.setLineDash([8,6]);x.lineWidth=3;x.font='26px sans-serif';
+ [[d.up_end,'#22c55e',d.p_up],[d.dn_end,'#ef4444',1-d.p_up]].forEach(([v,col,p])=>{
+  x.globalAlpha=.45+.55*p;x.strokeStyle=col;x.fillStyle=col;x.beginPath();x.moveTo(X(n-1),Y(d.px));x.lineTo(X(n-1+d.h),Y(v));x.stroke();
+  x.fillText((p*100).toFixed(0)+'%',X(n-1+d.h)-30,Y(v)+(v<d.px?30:-10));});
+ x.setLineDash([]);x.globalAlpha=1;x.lineWidth=1;
+}
+function renderTF(){
+ if(!TF)return;
+ const tfs=['5m','15m','1h','4h'];
+ $('tfm').innerHTML='<div class="card muted">Cena i prognoza wg interwału. To ocena historyczna modelu, nie gwarancja ruchu.</div>'+tfs.filter(t=>TF.tf[t]).map(t=>tfCard('tfm',t,TF.tf[t])).join('');
+ const wc=tfs.filter(t=>TF.wallet&&TF.wallet[t]).map(t=>tfCard('tfw',t,TF.wallet[t])).join('');
+ $('tfw').innerHTML='<div class="card muted">Aktywność 10 portfeli na świecach każdego interwału. Osobny model, bez wpływu na prognozę główną.</div>'+(wc||'<div class="card muted">Brak danych o transakcjach portfeli.</div>');
+ tfs.forEach(t=>{drawTF('tfm-'+t,TF.tf[t]);drawTF('tfw-'+t,TF.wallet&&TF.wallet[t]);});
+}
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+loadTF();setInterval(loadTF,12e4);
 load();loadSpec();setInterval(()=>{load();loadSpec();},12e4);
 </script>
 </body></html>

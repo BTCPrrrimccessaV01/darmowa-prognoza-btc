@@ -324,3 +324,8 @@ def main():
 
 if __name__ == '__main__':
     main()
+    try:
+        import tf
+        tf.main()
+    except Exception as e:
+        print('TF UWAGA:', type(e).__name__, e)
