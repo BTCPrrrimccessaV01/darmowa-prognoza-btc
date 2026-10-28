@@ -1,4 +1,4 @@
-const CACHE = 'prognoza-btc-v4';
+const CACHE = 'darmowa-prognoza-btc';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(u).catch(() => null))))
