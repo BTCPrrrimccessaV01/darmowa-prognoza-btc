@@ -1,0 +1,46 @@
+name: darmowa-prognoza-btc
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: bot
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Bot główny
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+        run: python bot.py
+
+      - name: Spekulacja 0.33% (osobny moduł, błąd nie blokuje głównego)
+        continue-on-error: true
+        run: python spec033.py
+
+      - name: Zapisz dane w repozytorium
+        run: |
+          git config user.name "prognoza-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A data
+          [ -f state.json ] && git add state.json || true
+          [ -f spec_state.json ] && git add spec_state.json || true
+          if ! git diff --cached --quiet; then
+            git commit -m "bot $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi
